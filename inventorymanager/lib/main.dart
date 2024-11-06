@@ -62,6 +62,84 @@ class _InventoryScreenState extends State<InventoryScreen> {
   late Inventory inventory;
   int selectedIndex = -1;
 
+
+
+ Future<void> _createOrUpdate([DocumentSnapshot? documentSnapshot]) async {
+    String action = 'create';
+    if (documentSnapshot != null) {
+      action = 'update';
+     itemNameController.text = documentSnapshot['Item Name'];
+      quantityController.text = documentSnapshot['quantity'].toString();
+    }
+
+    await showModalBottomSheet(
+      isScrollControlled: true,
+      context: context,
+      builder: (BuildContext ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: itemNameController,
+                decoration: const InputDecoration(labelText: 'Item Name'),
+              ),
+              TextField(
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                controller: quantityController,
+                decoration: const InputDecoration(
+                  labelText: 'quantity"',
+                ),
+              ),
+              const SizedBox(
+                height: 20,
+              ),
+              ElevatedButton(
+                child: Text(action == 'create' ? 'Create' : 'Update'),
+                onPressed: () async {
+                  String name = itemNameController.text;
+                  double price = double.parse(quantityController.text);
+                  if (name.isNotEmpty && price != null) {
+                    if (action == 'create') {
+                      // Persist a new product to Firestore
+                      await _inventory.add({"Item Name": name, "quantity": price});
+                    }
+
+                    if (action == 'update') {
+                      // Update the product
+                      await _inventory.doc(documentSnapshot!.id).update({
+                        "Item Name": name,
+                        "quantity": price,
+                      });
+                    }
+
+                    itemNameController.text = '';
+                    quantityController.text = '';
+
+                    Navigator.of(context).pop();
+                  }
+                },
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+
+
+
+
+
+
+
   @override
   void initState() {
     super.initState();
@@ -154,7 +232,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 TextField(
                   controller: quantityController,
                   keyboardType: TextInputType.number,
-                  decoration: InputDecoration(labelText: 'Quantity'),
+                  decoration: InputDecoration(labelText: 'quantity'),
                 ),
               ],
             ),
@@ -179,70 +257,60 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('GFG Inventory Manager'),
+        title: const Text('CRUD operations'),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              itemCount: inventory.items.length,
+      // Using StreamBuilder to display all products from Firestore in real-time
+      body: StreamBuilder(
+        stream: _inventory.snapshots(),
+        builder: (context, AsyncSnapshot<QuerySnapshot> streamSnapshot) {
+          if (streamSnapshot.hasData) {
+            return ListView.builder(
+              itemCount: streamSnapshot.data!.docs.length,
               itemBuilder: (context, index) {
-                final item = inventory.items[index];
+                final DocumentSnapshot documentSnapshot =
+                streamSnapshot.data!.docs[index];
                 return Card(
+                  margin: const EdgeInsets.all(10),
                   child: ListTile(
-                    title: Text(item.name),
-                    subtitle: Text('Quantity: ${item.quantity}'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.edit),
-                          onPressed: () {
-                            showEditDialog(index);
-                          },
-                        ),
-                        IconButton(
-                          icon: Icon(Icons.delete),
-                          onPressed: () {
-                            deleteItem(index);
-                          },
-                        ),
-                      ],
+                    title: Text(documentSnapshot['Item Name']),
+                    subtitle: Text(documentSnapshot['quantity'].toString()),
+                    trailing: SizedBox(
+                      width: 100,
+                      child: Row(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () =>
+                                _createOrUpdate(documentSnapshot),
+                          ),
+                          // IconButton(
+                          //   icon: const Icon(Icons.delete),
+                          //   onPressed: () =>
+                          //       deleteItem(documentSnapshot.id),
+                          // ),
+                        ],
+                      ),
                     ),
                   ),
                 );
               },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                TextField(
-                  controller: itemNameController,
-                  decoration: InputDecoration(
-                      border: OutlineInputBorder(), labelText: 'Item Name'),
-                ),
-                SizedBox(height: 20),
-                TextField(
-                  controller: quantityController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                      border: OutlineInputBorder(), labelText: 'Quantity'),
-                ),
-                SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: selectedIndex == -1 ? addItem : editItem,
-                  child: Text(selectedIndex == -1 ? 'Add Item' : 'Save'),
-                ),
-              ],
-            ),
-          ),
-        ],
+            );
+          }
+
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        },
+      ),
+      // Add new product
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _createOrUpdate(),
+        child: const Icon(Icons.add),
       ),
     );
   }
